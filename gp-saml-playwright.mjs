@@ -31,6 +31,7 @@ const config = {
   onePasswordItem: process.env.GP_1P_ITEM || "",
   onePasswordVault: process.env.GP_1P_VAULT || "",
   staySignedIn: (process.env.GP_MS_STAY_SIGNED_IN || "yes").toLowerCase(),
+  mfaMethod: (process.env.GP_MFA_METHOD || "push").toLowerCase(),
   authgroup: process.env.GP_AUTHGROUP ?? "",
   background: ["1", "true", "yes"].includes(
     (process.env.GP_BACKGROUND || "").toLowerCase(),
@@ -133,6 +134,28 @@ function loadOnePasswordCredentials() {
 
   console.error(`Loaded login credentials from 1Password item "${item.title}".`);
   return { username, password };
+}
+
+function loadOnePasswordOtp() {
+  if (!config.onePasswordItem) {
+    return "";
+  }
+
+  const args = ["item", "get", config.onePasswordItem, "--otp"];
+  if (config.onePasswordVault) {
+    args.push("--vault", config.onePasswordVault);
+  }
+
+  const op = spawnSync("op", args, {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  if (op.status !== 0) {
+    return "";
+  }
+
+  return op.stdout.trim();
 }
 
 async function getSamlEntry() {
@@ -526,6 +549,62 @@ async function submitVisibleLoginForm(page, submitSelectors, passwordSelectors) 
   return "";
 }
 
+async function submitVerificationCode(page, verifySelectors, codeSelectors) {
+  if (await clickFirstVisibleLoose(page, verifySelectors)) {
+    return "click";
+  }
+
+  if (await pressEnterFirstVisible(page, codeSelectors)) {
+    return "enter";
+  }
+
+  return "";
+}
+
+async function maybeUseVerificationCodeMfa(page, codeSelectors, verifySelectors) {
+  if (await hasVisible(page, codeSelectors)) {
+    const otp = loadOnePasswordOtp();
+    if (!otp) {
+      fail(
+        "The page is asking for a verification code, but the 1Password item " +
+          `"${config.onePasswordItem}" does not have a one-time password field.`,
+      );
+    }
+
+    const filled = await fillFirstVisible(page, codeSelectors, otp);
+    if (filled) {
+      const submitMethod = await submitVerificationCode(
+        page,
+        verifySelectors,
+        codeSelectors,
+      );
+      if (submitMethod) {
+        console.error(`Submitted verification code from 1Password (${submitMethod}).`);
+        await sleep(1500);
+        return true;
+      }
+    }
+  }
+
+  if (
+    await clickAnyTextIfVisible(page, [
+      "I can't use my Microsoft Authenticator app right now",
+      "Use a verification code",
+      "Use verification code",
+      "Enter a verification code",
+      "다른 방법",
+      "확인 코드",
+      "인증 코드",
+    ])
+  ) {
+    console.error("Selected verification code MFA option.");
+    await sleep(1500);
+    return true;
+  }
+
+  return false;
+}
+
 async function automateMicrosoftLogin(page, credentials, isSettled) {
   let enteredUsername = false;
   let enteredPassword = false;
@@ -575,8 +654,41 @@ async function automateMicrosoftLogin(page, credentials, isSettled) {
     'button:has-text("Next")',
     'button:has-text("다음")',
   ];
+  const verificationCodeSelectors = [
+    'input[name="otc"]',
+    'input[name="code"]',
+    'input[name="verificationCode"]',
+    'input#idTxtBx_SAOTCC_OTC',
+    'input[autocomplete="one-time-code"]',
+    'input[inputmode="numeric"]',
+    'input[type="tel"]',
+    'input[type="number"]',
+  ];
+  const verifySelectors = [
+    'input#idSubmit_SAOTCC_Continue',
+    'button#idSubmit_SAOTCC_Continue',
+    'input[type="submit"]',
+    'button[type="submit"]',
+    'button:has-text("Verify")',
+    'button:has-text("Next")',
+    'button:has-text("Continue")',
+    'button:has-text("확인")',
+    'button:has-text("다음")',
+    'button:has-text("계속")',
+  ];
 
   while (!isSettled() && Date.now() < deadline) {
+    if (
+      config.mfaMethod === "verification-code" &&
+      (await maybeUseVerificationCodeMfa(
+        page,
+        verificationCodeSelectors,
+        verifySelectors,
+      ))
+    ) {
+      continue;
+    }
+
     const hasLoginForm =
       (await hasVisible(page, usernameSelectors)) ||
       (await hasVisible(page, passwordSelectors));

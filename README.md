@@ -93,5 +93,10 @@ GP_INTERFACE="gateway"
 GP_AUTHGROUP=""
 
 VPN_USER="your.name@example.com"
+GP_MFA_METHOD="push"
 GP_MS_STAY_SIGNED_IN=yes
 ```
+
+Set `GP_MFA_METHOD="verification-code"` only if your sign-in page offers
+`Use a verification code` and your 1Password item has a one-time password field
+for the same account. The helper will read it with `op item get --otp`.

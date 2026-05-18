@@ -106,7 +106,7 @@ cmd_init() {
   mkdir -p "$(dirname "$target")"
 
   echo "Creating config: $target"
-  local item vault host iface authgroup user default_user
+  local item vault host iface authgroup user mfa_method default_user
   default_user="${VPN_USER:-$(id -un)@example.com}"
   item="$(prompt "1Password item name" "Company VPN")"
   vault="$(prompt "1Password vault name (blank is okay)" "")"
@@ -114,6 +114,7 @@ cmd_init() {
   iface="$(prompt "GlobalProtect interface (portal/gateway)" "gateway")"
   authgroup="$(prompt "Gateway/authgroup (blank for direct gateway)" "")"
   user="$(prompt "VPN username fallback" "$default_user")"
+  mfa_method="$(prompt "MFA method (push/verification-code)" "push")"
 
   {
     echo "# gp-openconnect config"
@@ -127,6 +128,7 @@ cmd_init() {
     echo "GP_INTERFACE=$(quote_env "$iface")"
     echo "GP_AUTHGROUP=$(quote_env "$authgroup")"
     echo "VPN_USER=$(quote_env "$user")"
+    echo "GP_MFA_METHOD=$(quote_env "$mfa_method")"
     echo "GP_MS_STAY_SIGNED_IN=yes"
   } >"$target"
 
@@ -189,6 +191,7 @@ cmd_doctor() {
     echo "  host: ${VPN_HOST}"
     echo "  interface: ${GP_INTERFACE}"
     echo "  authgroup: ${GP_AUTHGROUP:-<none>}"
+    echo "  MFA method: ${GP_MFA_METHOD:-push}"
     echo "  1Password item: ${GP_1P_ITEM}"
     local op_args=("item" "get" "$GP_1P_ITEM")
     if [[ -n "${GP_1P_VAULT:-}" ]]; then
