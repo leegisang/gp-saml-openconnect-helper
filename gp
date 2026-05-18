@@ -136,7 +136,7 @@ cmd_init() {
   if [[ "$setup_touchid" -eq 1 ]]; then
     echo
     echo "Enabling Touch ID for sudo. This may ask for your Mac password once."
-    "$DIR/setup-sudo-touchid" || {
+    cmd_sudo_touchid || {
       echo
       echo "Touch ID sudo setup failed. You can retry later with: $0 sudo-touchid"
     }
@@ -234,15 +234,144 @@ cmd_connect() {
     unset GP_BACKGROUND || true
   fi
 
-  exec "$DIR/gp-connect"
+  if [[ ! -d "$DIR/node_modules/playwright-core" ]]; then
+    echo "Missing dependency: playwright-core"
+    echo "Run: npm install"
+    exit 1
+  fi
+
+  exec node "$DIR/gp-saml-playwright.mjs"
 }
 
 cmd_disconnect() {
-  exec "$DIR/gp-disconnect"
+  local pid_file
+  pid_file="${GP_PID_FILE:-/tmp/gp-openconnect-$(id -u).pid}"
+
+  if [[ ! -f "$pid_file" ]]; then
+    echo "No OpenConnect pid file found: $pid_file"
+    exit 0
+  fi
+
+  local pid
+  pid="$(cat "$pid_file" 2>/dev/null || true)"
+  if [[ ! "$pid" =~ ^[0-9]+$ ]]; then
+    echo "Invalid pid file: $pid_file"
+    sudo rm -f "$pid_file"
+    exit 1
+  fi
+
+  if ! ps -p "$pid" >/dev/null 2>&1; then
+    echo "OpenConnect is not running (stale pid $pid)."
+    sudo rm -f "$pid_file"
+    exit 0
+  fi
+
+  local command
+  command="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+  if [[ "$command" != *openconnect* ]]; then
+    echo "Refusing to kill pid $pid because it is not openconnect."
+    echo "$command"
+    exit 1
+  fi
+
+  echo "Stopping OpenConnect pid $pid..."
+  sudo kill "$pid"
+  sudo rm -f "$pid_file"
+  echo "Disconnected."
 }
 
 cmd_status() {
-  exec "$DIR/gp-status"
+  local pid_file
+  pid_file="${GP_PID_FILE:-/tmp/gp-openconnect-$(id -u).pid}"
+
+  echo "GlobalProtect/OpenConnect status:"
+
+  if [[ -f "$pid_file" ]]; then
+    local pid
+    pid="$(cat "$pid_file" 2>/dev/null || true)"
+    if [[ "$pid" =~ ^[0-9]+$ ]] && ps -p "$pid" >/dev/null 2>&1; then
+      local command
+      command="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+      if [[ "$command" == *openconnect* ]]; then
+        echo "  openconnect: running (pid $pid)"
+      else
+        echo "  pid file exists, but pid $pid is not openconnect"
+      fi
+    else
+      echo "  openconnect: not running (stale pid file: $pid_file)"
+    fi
+  else
+    echo "  openconnect: no pid file ($pid_file)"
+  fi
+
+  local vpn_ips
+  vpn_ips="$(
+    ifconfig 2>/dev/null | awk '
+      /^utun[0-9]+:/ {
+        iface=$1
+        sub(":", "", iface)
+      }
+      iface && $1 == "inet" && $2 ~ /^10\./ {
+        print "  vpn ip: " $2 " on " iface
+      }
+    '
+  )"
+
+  if [[ -n "$vpn_ips" ]]; then
+    echo "$vpn_ips"
+  else
+    echo "  vpn ip: not found on utun"
+  fi
+}
+
+cmd_sudo_touchid() {
+  if [[ ! -f /etc/pam.d/sudo_local.template ]]; then
+    echo "This macOS install does not have /etc/pam.d/sudo_local.template."
+    echo "Manual fallback: add this line near the top of /etc/pam.d/sudo:"
+    echo "auth       sufficient     pam_tid.so"
+    return 1
+  fi
+
+  if [[ ! -f /etc/pam.d/sudo_local ]]; then
+    sudo cp /etc/pam.d/sudo_local.template /etc/pam.d/sudo_local
+  fi
+
+  sudo sed -i.bak -E \
+    's/^#(auth[[:space:]]+sufficient[[:space:]]+pam_tid\.so)/\1/' \
+    /etc/pam.d/sudo_local
+
+  echo "Touch ID for sudo is enabled."
+  echo "Open a new terminal or run: sudo -k && sudo -v"
+}
+
+cmd_sudo_nopasswd() {
+  local user_name openconnect_path openconnect_realpath sudoers_file tmp_file
+  user_name="$(id -un)"
+  openconnect_path="$(command -v openconnect)"
+  openconnect_realpath="$(realpath "$openconnect_path" 2>/dev/null || echo "$openconnect_path")"
+  sudoers_file="/etc/sudoers.d/gp-openconnect-${user_name}"
+  tmp_file="$(mktemp)"
+
+  {
+    echo "# Allow ${user_name} to run OpenConnect for GlobalProtect without a sudo password."
+    echo "# Created by gp."
+    if [[ "$openconnect_path" == "$openconnect_realpath" ]]; then
+      echo "${user_name} ALL=(root) NOPASSWD: ${openconnect_path} *"
+    else
+      echo "${user_name} ALL=(root) NOPASSWD: ${openconnect_path} *, ${openconnect_realpath} *"
+    fi
+  } >"$tmp_file"
+
+  sudo visudo -cf "$tmp_file" >/dev/null
+  sudo install -m 0440 "$tmp_file" "$sudoers_file"
+  rm -f "$tmp_file"
+
+  echo "Installed sudoers rule:"
+  sudo cat "$sudoers_file"
+  echo
+  echo "Test with:"
+  echo "  sudo -k"
+  echo "  sudo -n ${openconnect_path} --version"
 }
 
 case "${1:-}" in
@@ -272,11 +401,11 @@ case "${1:-}" in
     ;;
   sudo-touchid)
     shift
-    exec "$DIR/setup-sudo-touchid"
+    cmd_sudo_touchid "$@"
     ;;
   sudo-nopasswd)
     shift
-    exec "$DIR/setup-sudo-openconnect-nopasswd"
+    cmd_sudo_nopasswd "$@"
     ;;
   ""|-h|--help|help)
     usage

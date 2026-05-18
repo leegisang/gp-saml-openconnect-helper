@@ -63,6 +63,15 @@ More convenient but more sensitive:
 ./gp sudo-nopasswd
 ```
 
+## Files
+
+Runtime code is intentionally small:
+
+- `gp`: main CLI for setup, connect, status, disconnect, and sudo helpers.
+- `gp-saml-playwright.mjs`: browser/SAML automation and OpenConnect launcher.
+- `package.json` / `package-lock.json`: Node dependency metadata.
+- `.gp.env.example`: config template. Your real `.gp.env` stays local.
+
 ## Notes
 
 - The phone Microsoft Authenticator number-matching step is still manual.

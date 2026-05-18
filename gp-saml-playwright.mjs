@@ -171,8 +171,8 @@ async function getSamlEntry() {
   const request = findXmlTag(xml, "saml-request");
   if (!method || !request) {
     fail(
-      `Prelogin response did not contain SAML data. Try:\n` +
-        `  GP_INTERFACE=portal ./gp-connect\n\n` +
+      `Prelogin response did not contain SAML data. Try editing .gp.env ` +
+        `and set GP_INTERFACE=portal.\n\n` +
         xml,
     );
   }
