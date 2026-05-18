@@ -114,7 +114,7 @@ cmd_init() {
   iface="$(prompt "GlobalProtect interface (portal/gateway)" "gateway")"
   authgroup="$(prompt "Gateway/authgroup (blank for direct gateway)" "")"
   user="$(prompt "VPN username fallback" "$default_user")"
-  mfa_method="$(prompt "MFA method (push/verification-code)" "push")"
+  mfa_method="$(prompt "MFA method (verification-code/push)" "verification-code")"
 
   {
     echo "# gp-openconnect config"
@@ -191,7 +191,7 @@ cmd_doctor() {
     echo "  host: ${VPN_HOST}"
     echo "  interface: ${GP_INTERFACE}"
     echo "  authgroup: ${GP_AUTHGROUP:-<none>}"
-    echo "  MFA method: ${GP_MFA_METHOD:-push}"
+    echo "  MFA method: ${GP_MFA_METHOD:-verification-code}"
     echo "  1Password item: ${GP_1P_ITEM}"
     local op_args=("item" "get" "$GP_1P_ITEM")
     if [[ -n "${GP_1P_VAULT:-}" ]]; then

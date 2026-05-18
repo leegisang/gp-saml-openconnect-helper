@@ -31,7 +31,7 @@ const config = {
   onePasswordItem: process.env.GP_1P_ITEM || "",
   onePasswordVault: process.env.GP_1P_VAULT || "",
   staySignedIn: (process.env.GP_MS_STAY_SIGNED_IN || "yes").toLowerCase(),
-  mfaMethod: (process.env.GP_MFA_METHOD || "push").toLowerCase(),
+  mfaMethod: (process.env.GP_MFA_METHOD || "verification-code").toLowerCase(),
   authgroup: process.env.GP_AUTHGROUP ?? "",
   background: ["1", "true", "yes"].includes(
     (process.env.GP_BACKGROUND || "").toLowerCase(),

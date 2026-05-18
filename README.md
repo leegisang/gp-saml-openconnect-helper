@@ -2,8 +2,10 @@
 
 This wraps `openconnect` + Microsoft SAML login + 1Password CLI autofill.
 
-It does not bypass MFA. If your organization uses Microsoft Authenticator
-number matching, you still approve that step on your phone.
+The default flow uses a 1Password one-time password field to choose
+`Use a verification code` during Microsoft MFA and submit the current code.
+It does not bypass MFA; it automates the verification-code method you already
+registered.
 
 ## Setup
 
@@ -17,6 +19,17 @@ Enable 1Password app integration:
 ```text
 1Password > Settings > Developer > Integrate with 1Password CLI
 ```
+
+Create or update your 1Password login item so it contains:
+
+- username
+- password
+- one-time password
+
+For Microsoft work/school accounts, add the one-time password from
+`mysignins.microsoft.com/security-info` by choosing Microsoft Authenticator and
+manual code entry. Paste the secret into the 1Password item's one-time password
+field.
 
 Create a config:
 
@@ -81,6 +94,8 @@ Runtime code is intentionally small:
   be committed.
 - Confirm your organization allows OpenConnect/non-official VPN clients before
   using this broadly.
+- If you cannot register a one-time password in 1Password, set
+  `GP_MFA_METHOD="push"` and approve the number-matching prompt manually.
 
 ## Example Config
 
@@ -93,10 +108,10 @@ GP_INTERFACE="gateway"
 GP_AUTHGROUP=""
 
 VPN_USER="your.name@example.com"
-GP_MFA_METHOD="push"
+GP_MFA_METHOD="verification-code"
 GP_MS_STAY_SIGNED_IN=yes
 ```
 
-Set `GP_MFA_METHOD="verification-code"` only if your sign-in page offers
-`Use a verification code` and your 1Password item has a one-time password field
-for the same account. The helper will read it with `op item get --otp`.
+Set `GP_MFA_METHOD="push"` if your organization only allows Microsoft
+Authenticator push/number matching. In that mode, the phone approval step remains
+manual.
