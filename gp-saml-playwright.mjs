@@ -362,6 +362,20 @@ async function fillFirstVisible(page, selectors, value) {
   return false;
 }
 
+async function hasVisible(page, selectors) {
+  for (const selector of selectors) {
+    const locator = page.locator(selector).first();
+    try {
+      if ((await locator.count()) && (await locator.isVisible())) {
+        return true;
+      }
+    } catch {
+      // The login DOM can change between checks.
+    }
+  }
+  return false;
+}
+
 async function clickAnyTextIfVisible(page, texts) {
   for (const text of texts) {
     if (await clickTextIfVisible(page, text)) {
@@ -376,13 +390,73 @@ async function automateMicrosoftLogin(page, credentials, isSettled) {
   let enteredPassword = false;
   let handledStaySignedIn = false;
   let clickedPostPasswordPrompt = false;
+  let submittedUsernameOnce = false;
   const deadline = Date.now() + Math.min(config.timeoutMs, 120_000);
+  const usernameSelectors = [
+    'input[name="loginfmt"]',
+    'input[name="UserName"]',
+    'input[name="username"]',
+    'input[type="email"]',
+    'input#i0116',
+    'input#userNameInput',
+    'input#username',
+    'input[autocomplete="username"]',
+  ];
+  const passwordSelectors = [
+    'input[name="passwd"]',
+    'input[name="Password"]',
+    'input[name="password"]',
+    'input[type="password"]',
+    'input#i0118',
+    'input#passwordInput',
+    'input#password',
+    'input[autocomplete="current-password"]',
+  ];
+  const submitSelectors = [
+    'input#submitButton',
+    'button#submitButton',
+    'input[type="submit"]',
+    'button[type="submit"]',
+    'input[value="Sign in"]',
+    'input[value="로그인"]',
+    'button:has-text("Sign in")',
+    'button:has-text("로그인")',
+  ];
+  const nextSelectors = [
+    'input[type="submit"]',
+    'button[type="submit"]',
+    'button:has-text("Next")',
+    'button:has-text("다음")',
+  ];
 
   while (!isSettled() && Date.now() < deadline) {
-    const url = page.url();
-    if (!/login\.microsoftonline\.com|login\.live\.com|microsoft/i.test(url)) {
+    const hasLoginForm =
+      (await hasVisible(page, usernameSelectors)) ||
+      (await hasVisible(page, passwordSelectors));
+    const isKnownLoginHost =
+      /login\.microsoftonline\.com|login\.live\.com|microsoft|adfs/i.test(
+        page.url(),
+      );
+    if (!hasLoginForm && !isKnownLoginHost) {
       await sleep(500);
       continue;
+    }
+
+    if (!enteredPassword && (await hasVisible(page, passwordSelectors))) {
+      await fillFirstVisible(page, usernameSelectors, credentials.username);
+      const filledPassword = await fillFirstVisible(
+        page,
+        passwordSelectors,
+        credentials.password,
+      );
+      if (filledPassword) {
+        await clickFirstVisible(page, submitSelectors);
+        enteredUsername = true;
+        enteredPassword = true;
+        console.error("Submitted login credentials from 1Password.");
+        await sleep(1200);
+        continue;
+      }
     }
 
     if (!enteredUsername) {
@@ -395,22 +469,15 @@ async function automateMicrosoftLogin(page, credentials, isSettled) {
 
       const filled = await fillFirstVisible(
         page,
-        [
-          'input[name="loginfmt"]',
-          'input[type="email"]',
-          'input#i0116',
-          'input[autocomplete="username"]',
-        ],
+        usernameSelectors,
         credentials.username,
       );
       if (filled) {
-        enteredUsername = await clickFirstVisible(page, [
-          'input[type="submit"]',
-          'button[type="submit"]',
-          'button:has-text("Next")',
-          'button:has-text("다음")',
-        ]);
-        console.error("Submitted Microsoft username from 1Password.");
+        enteredUsername = await clickFirstVisible(page, nextSelectors);
+        if (!submittedUsernameOnce) {
+          console.error("Submitted username from 1Password.");
+          submittedUsernameOnce = true;
+        }
         await sleep(1200);
         continue;
       }
@@ -419,23 +486,13 @@ async function automateMicrosoftLogin(page, credentials, isSettled) {
     if (!enteredPassword) {
       const filled = await fillFirstVisible(
         page,
-        [
-          'input[name="passwd"]',
-          'input[type="password"]',
-          'input#i0118',
-          'input[autocomplete="current-password"]',
-        ],
+        passwordSelectors,
         credentials.password,
       );
       if (filled) {
-        await clickFirstVisible(page, [
-          'input[type="submit"]',
-          'button[type="submit"]',
-          'button:has-text("Sign in")',
-          'button:has-text("로그인")',
-        ]);
+        await clickFirstVisible(page, submitSelectors);
         enteredPassword = true;
-        console.error("Submitted Microsoft password from 1Password.");
+        console.error("Submitted password from 1Password.");
         await sleep(1200);
         continue;
       }
