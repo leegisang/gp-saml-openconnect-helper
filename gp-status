@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PID_FILE="${GP_PID_FILE:-/tmp/gp-openconnect-$(id -u).pid}"
+
+echo "GlobalProtect/OpenConnect status:"
+
+if [[ -f "$PID_FILE" ]]; then
+  pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+  if [[ "$pid" =~ ^[0-9]+$ ]] && ps -p "$pid" >/dev/null 2>&1; then
+    command="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+    if [[ "$command" == *openconnect* ]]; then
+      echo "  openconnect: running (pid $pid)"
+    else
+      echo "  pid file exists, but pid $pid is not openconnect"
+    fi
+  else
+    echo "  openconnect: not running (stale pid file: $PID_FILE)"
+  fi
+else
+  echo "  openconnect: no pid file ($PID_FILE)"
+fi
+
+vpn_ips="$(
+  ifconfig 2>/dev/null | awk '
+    /^utun[0-9]+:/ {
+      iface=$1
+      sub(":", "", iface)
+    }
+    iface && $1 == "inet" && $2 ~ /^10\./ {
+      print "  vpn ip: " $2 " on " iface
+    }
+  '
+)"
+
+if [[ -n "$vpn_ips" ]]; then
+  echo "$vpn_ips"
+else
+  echo "  vpn ip: not found on utun"
+fi

@@ -1,0 +1,8 @@
+{
+  "name": "gp-saml-openconnect-helper",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "playwright-core": "^1.56.1"
+  }
+}

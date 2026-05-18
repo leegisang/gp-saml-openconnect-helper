@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+APP_ID="com.paloaltonetworks.gp.pangpa"
+SERVICE_ID="com.paloaltonetworks.gp.pangps"
+
+APP_PLIST="/Library/LaunchAgents/${APP_ID}.plist"
+SERVICE_AGENT_PLIST="/Library/LaunchAgents/${SERVICE_ID}.plist"
+SERVICE_DAEMON_PLIST="/Library/LaunchDaemons/${SERVICE_ID}.plist"
+
+REAL_UID="${SUDO_UID:-$(id -u)}"
+GUI_DOMAIN="gui/${REAL_UID}"
+
+usage() {
+  echo "Usage: $0 {start|stop|restart|status}"
+}
+
+run_system_launchctl() {
+  if [[ "$(id -u)" -eq 0 ]]; then
+    launchctl "$@"
+  else
+    sudo launchctl "$@"
+  fi
+}
+
+bootstrap_gui() {
+  local plist="$1"
+  local label="$2"
+
+  if [[ ! -f "$plist" ]]; then
+    echo "Skip: $plist not found"
+    return 0
+  fi
+
+  launchctl bootstrap "$GUI_DOMAIN" "$plist" 2>/dev/null || true
+  launchctl kickstart -k "${GUI_DOMAIN}/${label}" 2>/dev/null || true
+}
+
+bootout_gui() {
+  local plist="$1"
+
+  if [[ ! -f "$plist" ]]; then
+    return 0
+  fi
+
+  launchctl bootout "$GUI_DOMAIN" "$plist" 2>/dev/null || true
+}
+
+bootstrap_system() {
+  local plist="$1"
+  local label="$2"
+
+  if [[ ! -f "$plist" ]]; then
+    echo "Skip: $plist not found"
+    return 0
+  fi
+
+  run_system_launchctl bootstrap system "$plist" 2>/dev/null || true
+  run_system_launchctl kickstart -k "system/${label}" 2>/dev/null || true
+}
+
+bootout_system() {
+  local plist="$1"
+
+  if [[ ! -f "$plist" ]]; then
+    return 0
+  fi
+
+  run_system_launchctl bootout system "$plist" 2>/dev/null || true
+}
+
+print_status() {
+  echo "GlobalProtect launchctl status:"
+  launchctl print "${GUI_DOMAIN}/${APP_ID}" >/dev/null 2>&1 \
+    && echo "  ${APP_ID}: loaded in ${GUI_DOMAIN}" \
+    || echo "  ${APP_ID}: not loaded in ${GUI_DOMAIN}"
+
+  launchctl print "${GUI_DOMAIN}/${SERVICE_ID}" >/dev/null 2>&1 \
+    && echo "  ${SERVICE_ID}: loaded in ${GUI_DOMAIN}" \
+    || echo "  ${SERVICE_ID}: not loaded in ${GUI_DOMAIN}"
+
+  run_system_launchctl print "system/${SERVICE_ID}" >/dev/null 2>&1 \
+    && echo "  ${SERVICE_ID}: loaded in system" \
+    || echo "  ${SERVICE_ID}: not loaded in system"
+}
+
+case "${1:-}" in
+  start)
+    echo "Starting GlobalProtect..."
+
+    if [[ -f "$SERVICE_DAEMON_PLIST" ]]; then
+      bootstrap_system "$SERVICE_DAEMON_PLIST" "$SERVICE_ID"
+    else
+      bootstrap_gui "$SERVICE_AGENT_PLIST" "$SERVICE_ID"
+    fi
+
+    bootstrap_gui "$APP_PLIST" "$APP_ID"
+    echo "Done."
+    ;;
+
+  stop)
+    echo "Stopping GlobalProtect..."
+    bootout_gui "$APP_PLIST"
+    bootout_gui "$SERVICE_AGENT_PLIST"
+    bootout_system "$SERVICE_DAEMON_PLIST"
+    echo "Done."
+    ;;
+
+  restart)
+    "$0" stop
+    sleep 1
+    "$0" start
+    ;;
+
+  status)
+    print_status
+    ;;
+
+  *)
+    usage
+    exit 1
+    ;;
+esac

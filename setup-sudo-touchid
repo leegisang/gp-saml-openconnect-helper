@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ ! -f /etc/pam.d/sudo_local.template ]]; then
+  echo "This macOS install does not have /etc/pam.d/sudo_local.template."
+  echo "Manual fallback: add this line near the top of /etc/pam.d/sudo:"
+  echo "auth       sufficient     pam_tid.so"
+  exit 1
+fi
+
+if [[ ! -f /etc/pam.d/sudo_local ]]; then
+  sudo cp /etc/pam.d/sudo_local.template /etc/pam.d/sudo_local
+fi
+
+sudo sed -i.bak -E \
+  's/^#(auth[[:space:]]+sufficient[[:space:]]+pam_tid\.so)/\1/' \
+  /etc/pam.d/sudo_local
+
+echo "Touch ID for sudo is enabled."
+echo "Open a new terminal or run: sudo -k && sudo -v"
