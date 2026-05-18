@@ -141,6 +141,15 @@ function loadOnePasswordOtp() {
     return "";
   }
 
+  const secondsIntoWindow = Math.floor(Date.now() / 1000) % 30;
+  if (secondsIntoWindow >= 24) {
+    const waitSeconds = 31 - secondsIntoWindow;
+    console.error(
+      `Waiting ${waitSeconds}s for a fresh one-time password window...`,
+    );
+    spawnSync("sleep", [String(waitSeconds)]);
+  }
+
   const args = ["item", "get", config.onePasswordItem, "--otp"];
   if (config.onePasswordVault) {
     args.push("--vault", config.onePasswordVault);
