@@ -84,6 +84,8 @@ load_config() {
   [[ -n "$override_gp_mfa_method" ]] && export GP_MFA_METHOD="$override_gp_mfa_method"
   [[ -n "$override_gp_ms_stay_signed_in" ]] && export GP_MS_STAY_SIGNED_IN="$override_gp_ms_stay_signed_in"
   [[ -n "$override_gp_split_routes" ]] && export GP_SPLIT_ROUTES="$override_gp_split_routes"
+
+  return 0
 }
 
 require_config() {
