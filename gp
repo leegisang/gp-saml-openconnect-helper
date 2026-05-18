@@ -60,10 +60,30 @@ load_config() {
     exit 1
   fi
 
+  local override_gp_1p_item="${GP_1P_ITEM:-}"
+  local override_gp_1p_vault="${GP_1P_VAULT:-}"
+  local override_vpn_host="${VPN_HOST:-}"
+  local override_gp_interface="${GP_INTERFACE:-}"
+  local override_gp_authgroup="${GP_AUTHGROUP:-}"
+  local override_vpn_user="${VPN_USER:-}"
+  local override_gp_mfa_method="${GP_MFA_METHOD:-}"
+  local override_gp_ms_stay_signed_in="${GP_MS_STAY_SIGNED_IN:-}"
+  local override_gp_split_routes="${GP_SPLIT_ROUTES:-}"
+
   set -a
   # shellcheck disable=SC1090
   source "$config"
   set +a
+
+  [[ -n "$override_gp_1p_item" ]] && export GP_1P_ITEM="$override_gp_1p_item"
+  [[ -n "$override_gp_1p_vault" ]] && export GP_1P_VAULT="$override_gp_1p_vault"
+  [[ -n "$override_vpn_host" ]] && export VPN_HOST="$override_vpn_host"
+  [[ -n "$override_gp_interface" ]] && export GP_INTERFACE="$override_gp_interface"
+  [[ -n "$override_gp_authgroup" ]] && export GP_AUTHGROUP="$override_gp_authgroup"
+  [[ -n "$override_vpn_user" ]] && export VPN_USER="$override_vpn_user"
+  [[ -n "$override_gp_mfa_method" ]] && export GP_MFA_METHOD="$override_gp_mfa_method"
+  [[ -n "$override_gp_ms_stay_signed_in" ]] && export GP_MS_STAY_SIGNED_IN="$override_gp_ms_stay_signed_in"
+  [[ -n "$override_gp_split_routes" ]] && export GP_SPLIT_ROUTES="$override_gp_split_routes"
 }
 
 require_config() {

@@ -339,13 +339,47 @@ async function loginAndCapture(entry) {
   const autofill = credentials
     ? automateMicrosoftLogin(page, credentials, () => settled)
     : Promise.resolve();
+  const failure = detectSamlFailure(page, () => settled);
 
   try {
-    return await done;
+    return await Promise.race([done, failure]);
   } finally {
     await autofill?.catch(() => {});
     await context.close().catch(() => {});
   }
+}
+
+async function detectSamlFailure(page, isSettled) {
+  const deadline = Date.now() + config.timeoutMs;
+  while (!isSettled() && Date.now() < deadline) {
+    try {
+      const url = page.url();
+      const body = await page.locator("body").innerText({ timeout: 1000 });
+      if (
+        /\/SAML20\/SP\/ACS/i.test(url) &&
+        /Authentication Failed|Error code|Please contact the administrator/i.test(
+          body,
+        )
+      ) {
+        const details = body
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .slice(0, 6)
+          .join("\n");
+        throw new Error(
+          `GlobalProtect rejected the SAML login at ACS.\nURL: ${url}\n${details}`,
+        );
+      }
+    } catch (error) {
+      if (String(error?.message || "").includes("GlobalProtect rejected")) {
+        throw error;
+      }
+    }
+    await sleep(1000);
+  }
+
+  return new Promise(() => {});
 }
 
 async function clickFirstVisible(page, selectors) {
