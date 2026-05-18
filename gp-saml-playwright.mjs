@@ -331,6 +331,30 @@ async function clickFirstVisible(page, selectors) {
   return false;
 }
 
+async function clickFirstVisibleLoose(page, selectors) {
+  for (const selector of selectors) {
+    const locator = page.locator(selector).first();
+    try {
+      if ((await locator.count()) && (await locator.isVisible())) {
+        await locator.click({ timeout: 1000, force: true });
+        return true;
+      }
+    } catch {
+      // Try a JavaScript click next.
+    }
+
+    try {
+      if ((await locator.count()) && (await locator.isVisible())) {
+        await locator.evaluate((element) => element.click());
+        return true;
+      }
+    } catch {
+      // Continue to the next selector.
+    }
+  }
+  return false;
+}
+
 async function clickTextIfVisible(page, text) {
   try {
     const locator = page.getByText(text, { exact: false }).first();
@@ -401,25 +425,12 @@ async function pressEnterFirstVisible(page, selectors) {
 }
 
 async function submitVisibleLoginForm(page, submitSelectors, passwordSelectors) {
-  if (await clickFirstVisible(page, submitSelectors)) {
-    return "click";
-  }
-
-  if (
-    await clickAnyTextIfVisible(page, [
-      "Sign in",
-      "로그인",
-      "Log in",
-      "로그온",
-      "Submit",
-      "확인",
-    ])
-  ) {
-    return "text-click";
-  }
-
   if (await pressEnterFirstVisible(page, passwordSelectors)) {
     return "enter";
+  }
+
+  if (await clickFirstVisibleLoose(page, submitSelectors)) {
+    return "click";
   }
 
   try {
@@ -444,6 +455,72 @@ async function submitVisibleLoginForm(page, submitSelectors, passwordSelectors) 
     }
   } catch {
     // The page may block script evaluation while navigating.
+  }
+
+  try {
+    const clicked = await page.evaluate(() => {
+      const candidates = Array.from(
+        document.querySelectorAll(
+          'input, button, a, [role="button"], [onclick], div, span',
+        ),
+      );
+      const visible = (element) => {
+        const style = window.getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return (
+          style.visibility !== "hidden" &&
+          style.display !== "none" &&
+          rect.width > 0 &&
+          rect.height > 0
+        );
+      };
+      const target = candidates.find((element) => {
+        const text = `${element.value || ""} ${element.textContent || ""}`.trim();
+        return visible(element) && /^(sign in|log in|submit|로그인|로그온|확인)$/i.test(text);
+      });
+      if (!target) return false;
+      target.click();
+      return true;
+    });
+    if (clicked) {
+      return "dom-click";
+    }
+  } catch {
+    // Continue to pointer fallback.
+  }
+
+  try {
+    const clicked = await page.evaluate(() => {
+      const candidates = Array.from(
+        document.querySelectorAll('input, button, a, [role="button"], [onclick]'),
+      );
+      const visible = (element) => {
+        const style = window.getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return (
+          style.visibility !== "hidden" &&
+          style.display !== "none" &&
+          rect.width > 0 &&
+          rect.height > 0
+        );
+      };
+      const target = candidates.find((element) => {
+        const text = `${element.value || ""} ${element.textContent || ""}`.trim();
+        return visible(element) && /sign in|log in|submit|로그인|로그온|확인/i.test(text);
+      });
+      if (!target) return null;
+      const rect = target.getBoundingClientRect();
+      return {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      };
+    });
+    if (clicked) {
+      await page.mouse.click(clicked.x, clicked.y);
+      return "mouse-click";
+    }
+  } catch {
+    // No usable clickable target was found.
   }
 
   return "";
@@ -477,9 +554,15 @@ async function automateMicrosoftLogin(page, credentials, isSettled) {
     'input[autocomplete="current-password"]',
   ];
   const submitSelectors = [
+    '#submitButton',
+    '[id="submitButton"]',
     'input#submitButton',
     'button#submitButton',
+    '.submit',
+    '[role="button"]:has-text("Sign in")',
+    '[role="button"]:has-text("로그인")',
     'input[type="submit"]',
+    'input[type="button"]',
     'button[type="submit"]',
     'input[value="Sign in"]',
     'input[value="로그인"]',
@@ -521,11 +604,11 @@ async function automateMicrosoftLogin(page, credentials, isSettled) {
         );
         if (submitMethod) {
           enteredUsername = true;
-          enteredPassword = true;
           console.error(
             `Submitted login credentials from 1Password (${submitMethod}).`,
           );
-          await sleep(1200);
+          await sleep(2500);
+          enteredPassword = !(await hasVisible(page, passwordSelectors));
           continue;
         }
       }
@@ -568,9 +651,9 @@ async function automateMicrosoftLogin(page, credentials, isSettled) {
           passwordSelectors,
         );
         if (submitMethod) {
-          enteredPassword = true;
           console.error(`Submitted password from 1Password (${submitMethod}).`);
-          await sleep(1200);
+          await sleep(2500);
+          enteredPassword = !(await hasVisible(page, passwordSelectors));
           continue;
         }
       }
