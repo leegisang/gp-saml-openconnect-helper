@@ -385,6 +385,70 @@ async function clickAnyTextIfVisible(page, texts) {
   return false;
 }
 
+async function pressEnterFirstVisible(page, selectors) {
+  for (const selector of selectors) {
+    const locator = page.locator(selector).first();
+    try {
+      if ((await locator.count()) && (await locator.isVisible())) {
+        await locator.press("Enter", { timeout: 1000 });
+        return true;
+      }
+    } catch {
+      // Some fields do not accept keyboard events in a stable way.
+    }
+  }
+  return false;
+}
+
+async function submitVisibleLoginForm(page, submitSelectors, passwordSelectors) {
+  if (await clickFirstVisible(page, submitSelectors)) {
+    return "click";
+  }
+
+  if (
+    await clickAnyTextIfVisible(page, [
+      "Sign in",
+      "로그인",
+      "Log in",
+      "로그온",
+      "Submit",
+      "확인",
+    ])
+  ) {
+    return "text-click";
+  }
+
+  if (await pressEnterFirstVisible(page, passwordSelectors)) {
+    return "enter";
+  }
+
+  try {
+    const submitted = await page.evaluate(() => {
+      const active = document.activeElement;
+      const password =
+        document.querySelector('input[type="password"]') ||
+        document.querySelector("#passwordInput") ||
+        document.querySelector("#password");
+      const form = password?.closest("form") || active?.closest?.("form");
+      if (!form) return false;
+
+      if (typeof form.requestSubmit === "function") {
+        form.requestSubmit();
+      } else {
+        form.submit();
+      }
+      return true;
+    });
+    if (submitted) {
+      return "form-submit";
+    }
+  } catch {
+    // The page may block script evaluation while navigating.
+  }
+
+  return "";
+}
+
 async function automateMicrosoftLogin(page, credentials, isSettled) {
   let enteredUsername = false;
   let enteredPassword = false;
@@ -450,12 +514,20 @@ async function automateMicrosoftLogin(page, credentials, isSettled) {
         credentials.password,
       );
       if (filledPassword) {
-        await clickFirstVisible(page, submitSelectors);
-        enteredUsername = true;
-        enteredPassword = true;
-        console.error("Submitted login credentials from 1Password.");
-        await sleep(1200);
-        continue;
+        const submitMethod = await submitVisibleLoginForm(
+          page,
+          submitSelectors,
+          passwordSelectors,
+        );
+        if (submitMethod) {
+          enteredUsername = true;
+          enteredPassword = true;
+          console.error(
+            `Submitted login credentials from 1Password (${submitMethod}).`,
+          );
+          await sleep(1200);
+          continue;
+        }
       }
     }
 
@@ -490,11 +562,17 @@ async function automateMicrosoftLogin(page, credentials, isSettled) {
         credentials.password,
       );
       if (filled) {
-        await clickFirstVisible(page, submitSelectors);
-        enteredPassword = true;
-        console.error("Submitted password from 1Password.");
-        await sleep(1200);
-        continue;
+        const submitMethod = await submitVisibleLoginForm(
+          page,
+          submitSelectors,
+          passwordSelectors,
+        );
+        if (submitMethod) {
+          enteredPassword = true;
+          console.error(`Submitted password from 1Password (${submitMethod}).`);
+          await sleep(1200);
+          continue;
+        }
       }
     }
 
