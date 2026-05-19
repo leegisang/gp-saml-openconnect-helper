@@ -32,6 +32,9 @@ const config = {
   onePasswordVault: process.env.GP_1P_VAULT || "",
   staySignedIn: (process.env.GP_MS_STAY_SIGNED_IN || "yes").toLowerCase(),
   mfaMethod: (process.env.GP_MFA_METHOD || "verification-code").toLowerCase(),
+  debugSaml: ["1", "true", "yes"].includes(
+    (process.env.GP_DEBUG_SAML || "").toLowerCase(),
+  ),
   authgroup: process.env.GP_AUTHGROUP ?? "",
   background: ["1", "true", "yes"].includes(
     (process.env.GP_BACKGROUND || "").toLowerCase(),
@@ -170,6 +173,7 @@ function loadOnePasswordOtp() {
 async function getSamlEntry() {
   const host = normalizeHost(config.host);
   const endpoint = `https://${host}/${preloginPath[config.iface]}`;
+  debug(`prelogin endpoint: ${endpoint}`);
   const body = new URLSearchParams({
     tmp: "tmp",
     "kerberos-support": "yes",
@@ -211,9 +215,11 @@ async function getSamlEntry() {
 
   const decoded = decodeBase64(request);
   if (method === "REDIRECT") {
+    debug(`SAML entry: REDIRECT ${decoded}`);
     return { method, url: decoded, html: "" };
   }
   if (method === "POST") {
+    debug(`SAML entry: POST ${endpoint}`);
     return { method, url: endpoint, html: decoded };
   }
 
@@ -255,6 +261,28 @@ function interestingHeaders(headers) {
   return out;
 }
 
+function debug(message) {
+  if (config.debugSaml) {
+    console.error(`[debug] ${message}`);
+  }
+}
+
+function summarizePostData(postData) {
+  if (!postData) {
+    return "no post body";
+  }
+
+  const params = new URLSearchParams(postData);
+  const keys = Array.from(params.keys());
+  const samlResponse = params.get("SAMLResponse") || "";
+  const relayState = params.get("RelayState") || "";
+  return [
+    `keys=${keys.join(",") || "<none>"}`,
+    `SAMLResponse=${samlResponse ? `${samlResponse.length} chars` : "missing"}`,
+    `RelayState=${relayState ? `${relayState.length} chars` : "missing"}`,
+  ].join(" ");
+}
+
 function isComplete(result) {
   return Boolean(
     result["saml-username"] &&
@@ -289,6 +317,14 @@ async function loginAndCapture(entry) {
 
     context.on("response", async (response) => {
       if (settled) return;
+
+      if (config.debugSaml && /\/SAML20\/SP\/ACS/i.test(response.url())) {
+        const request = response.request();
+        debug(
+          `ACS response: status=${response.status()} method=${request.method()} url=${response.url()}`,
+        );
+        debug(`ACS request body: ${summarizePostData(request.postData())}`);
+      }
 
       const headers = interestingHeaders(response.headers());
       if (Object.keys(headers).length) {
