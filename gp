@@ -329,6 +329,65 @@ cmd_status() {
     echo "  openconnect: no pid file ($pid_file)"
   fi
 
+  local gp_app gp_service gp_ui gp_daemon
+  if pgrep -f "/Applications/GlobalProtect.app/Contents/MacOS/GlobalProtect" >/dev/null 2>&1; then
+    gp_app="running"
+  else
+    gp_app="not running"
+  fi
+  if pgrep -f "/Applications/GlobalProtect.app/Contents/Resources/PanGPS" >/dev/null 2>&1; then
+    gp_service="running"
+  else
+    gp_service="not running"
+  fi
+  launchctl print "gui/$(id -u)/com.paloaltonetworks.gp.pangpa" >/dev/null 2>&1 && gp_ui="loaded" || gp_ui="missing"
+  launchctl print "gui/$(id -u)/com.paloaltonetworks.gp.pangps" >/dev/null 2>&1 && gp_daemon="loaded" || gp_daemon="missing"
+
+  echo "  official app: $gp_app"
+  echo "  official service: $gp_service"
+  echo "  launch agents: pangpa=$gp_ui pangps=$gp_daemon"
+
+  local default_route
+  default_route="$(
+    route -n get default 2>/dev/null | awk '
+      $1 == "gateway:" { gateway=$2 }
+      $1 == "interface:" { iface=$2 }
+      END {
+        if (iface) {
+          if (gateway) print iface " via " gateway
+          else print iface
+        }
+      }
+    '
+  )"
+  if [[ -n "$default_route" ]]; then
+    echo "  default route: $default_route"
+  else
+    echo "  default route: unknown"
+  fi
+
+  local vpn_routes
+  vpn_routes="$(
+    netstat -rn -f inet 2>/dev/null | awk '
+      $NF ~ /^utun[0-9]+$/ &&
+      $1 != "127" &&
+      $1 !~ /^224\./ &&
+      $1 !~ /^255\./ {
+        count[$NF]++
+      }
+      END {
+        for (iface in count) print iface " " count[iface]
+      }
+    '
+  )"
+  if [[ -n "$vpn_routes" ]]; then
+    while read -r iface count; do
+      echo "  vpn routes: $count route(s) via $iface"
+    done <<<"$vpn_routes"
+  else
+    echo "  vpn routes: none"
+  fi
+
   local vpn_ips
   vpn_ips="$(
     ifconfig 2>/dev/null | awk '
@@ -351,13 +410,13 @@ cmd_status() {
         }
         END { exit found ? 0 : 1 }
       '; then
-        echo "  vpn ip: $ip on $iface"
+        echo "  utun address: $ip on $iface (active route)"
       else
-        echo "  stale vpn ip: $ip on $iface (no active route)"
+        echo "  utun address: $ip on $iface (stale/no route)"
       fi
     done <<<"$vpn_ips"
   else
-    echo "  vpn ip: not found on utun"
+    echo "  utun address: none"
   fi
 }
 
