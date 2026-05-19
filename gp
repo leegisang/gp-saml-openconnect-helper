@@ -13,7 +13,8 @@ Usage:
   gp init --no-sudo-touchid Create a config file without sudo Touch ID setup
   gp setup                  Install/check Homebrew dependencies
   gp doctor                 Check local setup
-  gp connect [--fg]         Connect VPN
+  gp connect [--fg] [--fresh-profile]
+                             Connect VPN
   gp disconnect             Disconnect VPN
   gp status                 Show VPN status
   gp sudo-touchid           Enable Touch ID for sudo
@@ -243,12 +244,22 @@ cmd_doctor() {
 
 cmd_connect() {
   local foreground=0
-  if [[ "${1:-}" == "--fg" || "${1:-}" == "--foreground" ]]; then
-    foreground=1
-  elif [[ $# -gt 0 ]]; then
-    echo "Unknown connect option: $1"
-    exit 1
-  fi
+  local fresh_profile=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --fg|--foreground)
+        foreground=1
+        ;;
+      --fresh-profile|--fresh)
+        fresh_profile=1
+        ;;
+      *)
+        echo "Unknown connect option: $1"
+        exit 1
+        ;;
+    esac
+    shift
+  done
 
   load_config
   require_config
@@ -257,6 +268,12 @@ cmd_connect() {
     export GP_BACKGROUND=1
   else
     unset GP_BACKGROUND || true
+  fi
+
+  if [[ "$fresh_profile" -eq 1 ]]; then
+    export GP_BROWSER_PROFILE
+    GP_BROWSER_PROFILE="$(mktemp -d "${TMPDIR:-/tmp}/gp-saml-browser-profile.XXXXXX")"
+    echo "Using fresh browser profile: $GP_BROWSER_PROFILE"
   fi
 
   if [[ ! -d "$DIR/node_modules/playwright-core" ]]; then

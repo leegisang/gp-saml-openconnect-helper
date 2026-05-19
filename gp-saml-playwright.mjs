@@ -267,6 +267,8 @@ async function loginAndCapture(entry) {
   const credentials = loadOnePasswordCredentials();
 
   console.error(`Opening Chrome for Microsoft SAML login...`);
+  console.error(`MFA method: ${config.mfaMethod}`);
+  console.error(`Browser profile: ${config.profileDir}`);
   const context = await chromium.launchPersistentContext(config.profileDir, {
     headless: false,
     executablePath: config.chrome,
