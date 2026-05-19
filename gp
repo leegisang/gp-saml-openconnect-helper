@@ -337,13 +337,25 @@ cmd_status() {
         sub(":", "", iface)
       }
       iface && $1 == "inet" && $2 ~ /^10\./ {
-        print "  vpn ip: " $2 " on " iface
+        print iface " " $2
       }
     '
   )"
 
   if [[ -n "$vpn_ips" ]]; then
-    echo "$vpn_ips"
+    local iface ip
+    while read -r iface ip; do
+      if netstat -rn -f inet 2>/dev/null | awk -v iface="$iface" '
+        $NF == iface && $1 != "127" && $1 !~ /^224\./ && $1 !~ /^255\./ {
+          found=1
+        }
+        END { exit found ? 0 : 1 }
+      '; then
+        echo "  vpn ip: $ip on $iface"
+      else
+        echo "  stale vpn ip: $ip on $iface (no active route)"
+      fi
+    done <<<"$vpn_ips"
   else
     echo "  vpn ip: not found on utun"
   fi
