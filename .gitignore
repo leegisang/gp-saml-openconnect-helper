@@ -1,5 +1,7 @@
 node_modules/
 .gp.env
+.gp-app-playwright-profile/
 .gp-saml-browser-profile/
+gp-saml-playwright.mjs
 *.log
 *.zip
